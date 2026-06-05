@@ -1,0 +1,7 @@
+{
+    "Loading conversation...": "会話を読み込んでいます...",
+    "Failed to load conversation": "会話の読み込みに失敗しました",
+    "Failed to delete conversation": "会話の削除に失敗しました",
+    "Conversation History": "会話履歴",
+    "When enabled, this agent will be able to access past conversations to inform its responses.": "有効にすると、このエージェントは過去の会話履歴にアクセスし、回答の参考にできるようになります。"
+}

@@ -1,0 +1,14 @@
+{
+    "Loading knowledge items...": "ナレッジ項目を読み込んでいます...",
+    "Loading MCP servers...": "MCP サーバーを読み込んでいます...",
+    "No resources available": "利用可能なリソースがありません",
+    "MCP Servers": "MCP サーバー",
+    "Installed MCP Servers": "インストール済みの MCP サーバー",
+    "Add MCP Servers": "MCP サーバーを追加",
+    "Search for MCP servers to add to your configuration": "設定に追加する MCP サーバーを検索",
+    "No MCP Servers": "MCP サーバーがありません",
+    "MCP Configuration Error:": "MCP 設定エラー：",
+    "Knowledge": "ナレッジ",
+    "Knowledge Generation": "ナレッジ生成",
+    "Search for MCP servers": "MCP サーバーを検索"
+}
