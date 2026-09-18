@@ -4,17 +4,12 @@ const child_process = require('child_process');
 
 const PROJECT_ID = 'antigravity2-ja-jp';
 const PROJECT_NAME = 'Antigravity 2.0 日本語化パッケージ';
-const ENGINE_VERSION = '1.0.0';
+const ENGINE_VERSION = '1.0.1';
 const SIGNATURE = 'JA-JP';
 
 const SIGNATURE_START = '/* --- ANTIGRAVITY JA-JP LOCALIZATION START --- */';
 const SIGNATURE_END = '/* --- ANTIGRAVITY JA-JP LOCALIZATION END --- */';
 
-/**
- * 解析本地 @electron/asar CLI 路徑。
- * 優先使用 node_modules/@electron/asar/bin/asar.js，若不存在則提示使用者先執行 npm install。
- * @returns {string|null} asar CLI 的絕對路徑，若找不到則回傳 null。
- */
 function resolveAsarCli() {
     const localAsarPath = path.join(__dirname, 'node_modules', '@electron', 'asar', 'bin', 'asar.js');
     if (fs.existsSync(localAsarPath)) {
@@ -23,12 +18,6 @@ function resolveAsarCli() {
     return null;
 }
 
-/**
- * 使用本地 asar CLI 執行指令。
- * @param {string} action - asar 動作，例如 'extract' 或 'pack'
- * @param {string[]} args - 傳入 asar 的參數陣列
- * @returns {{success: boolean, stdout: string, stderr: string}}
- */
 function runAsarCommand(action, args) {
     const asarCli = resolveAsarCli();
     if (!asarCli) {
@@ -42,12 +31,7 @@ function runAsarCommand(action, args) {
     return runCommandSync(cmd);
 }
 
-/**
- * 環境檢查：確認必要工具是否存在。
- * @returns {boolean} 環境檢查是否通過
- */
 function checkEnvironment() {
-    // 檢查本地 @electron/asar CLI
     const asarCli = resolveAsarCli();
     if (!asarCli) {
         console.error('');
@@ -114,12 +98,41 @@ function generateJs() {
 
     const jsSource = `${SIGNATURE_START}
 (() => {
+    if (window.__ANTIGRAVITY_JA_JP_LOADED__) return;
+    window.__ANTIGRAVITY_JA_JP_LOADED__ = true;
+
+    const injectStyle = () => {
+        if (!document.getElementById('ag-ja-jp-tooltip-style')) {
+            const style = document.createElement('style');
+            style.id = 'ag-ja-jp-tooltip-style';
+            style.textContent = \`
+                .react-tooltip-content-wrapper:not([data-ag-tooltip-ready="true"]),
+                [class*="react-tooltip" i]:not([data-ag-tooltip-ready="true"]) {
+                    visibility: hidden !important;
+                    opacity: 0 !important;
+                }
+            \`;
+            const parent = document.head || document.documentElement;
+            if (parent) parent.appendChild(style);
+        }
+    };
+    injectStyle();
+
     const map = new Map(Object.entries(DICT_PLACEHOLDER));
     const lowerMap = new Map();
     for (const [k, v] of map.entries()) lowerMap.set(k.toLowerCase(), v);
 
     const longEntries = REPLACEMENT_ENTRIES_PLACEHOLDER;
     const done = new WeakSet();
+
+    const tooltipPortalSelectors = [
+        '.react-tooltip-content-wrapper', '[class*="react-tooltip" i]',
+        '[role="tooltip"]', '[data-radix-popper-content-wrapper]',
+        '[data-radix-tooltip-content]', '[data-slot="tooltip-content"]',
+        '[data-side][data-align]', '.tooltip', '.Tooltip',
+        '.tooltip-content', '.tooltipContent', '.popover',
+        '.popover-content', '.PopoverContent'
+    ];
 
     const BLOCKED_CLASSES = ['monaco-editor', 'editor-container', 'terminal', 'output-view', 'debug-console', 'code-view', 'artifact-container', 'suggest-widget'];
     const BLOCKED_TAGS = ['SCRIPT', 'STYLE', 'CODE', 'PRE', 'INPUT', 'TEXTAREA', 'SVG', 'CANVAS', 'SYMBOL', 'PATH'];
@@ -152,31 +165,234 @@ function generateJs() {
         return false;
     }
 
-    function translateNode(node) {
+    function translateString(originalVal) {
+        if (!originalVal || typeof originalVal !== 'string') return originalVal;
+        const valNorm = norm(originalVal);
+        if (!valNorm) return originalVal;
+
+        const valLower = valNorm.toLowerCase();
+        let newVal = originalVal;
+
+        if (map.has(valNorm)) {
+            newVal = map.get(valNorm);
+        } else if (lowerMap.has(valLower)) {
+            newVal = lowerMap.get(valLower);
+        } else {
+            for (const [key, translated] of longEntries) {
+                if (key.length > 20 && valNorm.includes(key)) {
+                    newVal = newVal.split(key).join(translated);
+                }
+            }
+        }
+
+        if (newVal === originalVal) {
+            const deleteProjectMatch = valNorm.match(/^Permanently delete (.+?) including (\\d+) active conversations? and (\\d+) archived conversations?\\.$/);
+            if (deleteProjectMatch) {
+                newVal = deleteProjectMatch[1] + ' を完全に削除します（進行中の会話 ' + deleteProjectMatch[2] + ' 件、アーカイブ済みの会話 ' + deleteProjectMatch[3] + ' 件を含む）。';
+            } else {
+                const deleteProjectPrefixMatch = valNorm.match(/^Permanently delete (.+)$/);
+                const activeConversationsMatch = valNorm.match(/^(\\d+) active conversations?$/);
+                const archivedConversationsMatch = valNorm.match(/^(\\d+) archived conversations?$/);
+
+                if (deleteProjectPrefixMatch) {
+                    newVal = deleteProjectPrefixMatch[1] + ' を完全に削除';
+                } else if (activeConversationsMatch) {
+                    newVal = activeConversationsMatch[1] + ' 件の進行中の会話';
+                } else if (archivedConversationsMatch) {
+                    newVal = archivedConversationsMatch[1] + ' 件のアーカイブ済みの会話';
+                } else if (valNorm === 'including') {
+                    newVal = '以下を含む：';
+                } else if (valNorm === 'and') {
+                    newVal = 'および';
+                }
+            }
+        }
+
+        return newVal;
+    }
+
+    function translateAttributes(el) {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return;
+        const tag = el.tagName.toUpperCase();
+        if (BLOCKED_TAGS.includes(tag)) return;
+        if (isInBlockedZone(el)) return;
+
+        for (const attr of ['placeholder', 'title', 'aria-label']) {
+            const v = el.getAttribute(attr);
+            if (!v) continue;
+            const translated = translateString(v);
+            if (translated !== v) {
+                el.setAttribute(attr, translated);
+            }
+        }
+    }
+
+    function sweepAttributes(root) {
+        if (!root || !root.querySelectorAll) return;
+        const els = root.querySelectorAll('[title], [aria-label], [placeholder]');
+        for (const el of els) {
+            translateAttributes(el);
+        }
+    }
+
+    const splitTextTranslationKeys = new Set([
+        'No Projects found'
+    ]);
+
+    const splitTextTranslationKeysLower = new Set(
+        [...splitTextTranslationKeys].map(key => key.toLowerCase())
+    );
+
+    function translateSplitTextElement(el) {
+        if (!el || el.nodeType !== Node.ELEMENT_NODE) return false;
+        if (isInBlockedZone(el)) return false;
+        if (el.matches && el.matches('button, input, textarea, select, option, [role="button"], [contenteditable="true"]')) return false;
+        if (el.querySelector('button, input, textarea, select, option, svg, canvas, [contenteditable="true"]')) return false;
+
+        const normalized = norm(el.textContent || '');
+        if (!splitTextTranslationKeysLower.has(normalized.toLowerCase())) return false;
+
+        const translated = map.get(normalized) || lowerMap.get(normalized.toLowerCase());
+        if (!translated || translated === normalized) return false;
+
+        const textNodes = [];
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+            const current = walker.currentNode;
+            if (!current.nodeValue || !current.nodeValue.trim()) continue;
+            if (isInBlockedZone(current)) return false;
+            textNodes.push(current);
+        }
+
+        if (textNodes.length < 2 || textNodes.length > 4) return false;
+
+        textNodes[0].nodeValue = translated;
+        done.add(textNodes[0]);
+        setTimeout(() => done.delete(textNodes[0]), 1000);
+
+        for (let i = 1; i < textNodes.length; i++) {
+            textNodes[i].nodeValue = '';
+            done.add(textNodes[i]);
+            setTimeout(() => done.delete(textNodes[i]), 1000);
+        }
+
+        return true;
+    }
+
+    function hasTranslatableEnglishText(node) {
+        if (!node) return false;
+        const text = node.textContent || '';
+        if (!text) return false;
+
+        for (const [key, translated] of map.entries()) {
+            if (key.length >= 3 && key !== translated && text.includes(key)) {
+                return true;
+            }
+        }
+        for (const [key, translated] of longEntries) {
+            if (key.length >= 3 && key !== translated && text.includes(key)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function translateTooltipNodeWithReadyCheck(node, attempt = 1) {
         try {
-            if (!node || done.has(node)) return;
-
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                const tag = node.tagName.toUpperCase();
-                if (BLOCKED_TAGS.includes(tag)) return;
-
-                if (!isInBlockedZone(node)) {
-                    for (const attr of ['placeholder', 'title', 'aria-label']) {
-                        const v = node.getAttribute(attr);
-                        if (!v) continue;
-
-                        const t = norm(v);
-                        if (map.has(t)) {
-                            node.setAttribute(attr, map.get(t));
-                        } else if (lowerMap.has(t.toLowerCase())) {
-                            node.setAttribute(attr, lowerMap.get(t.toLowerCase()));
+            translateNode(node);
+            translateAttributes(node);
+            sweepAttributes(node);
+        } finally {
+            try {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const checkAndSetReady = () => {
+                        let hasEnglish = false;
+                        if (node.matches && node.matches('.react-tooltip-content-wrapper, [class*="react-tooltip" i]')) {
+                            if (hasTranslatableEnglishText(node)) hasEnglish = true;
+                        } else {
+                            const subTooltips = node.querySelectorAll('.react-tooltip-content-wrapper, [class*="react-tooltip" i]');
+                            for (const t of subTooltips) {
+                                if (hasTranslatableEnglishText(t)) hasEnglish = true;
+                            }
                         }
+
+                        if (hasEnglish && attempt <= 5) {
+                            requestAnimationFrame(() => {
+                                translateTooltipNodeWithReadyCheck(node, attempt + 1);
+                            });
+                        } else {
+                            if (node.matches && node.matches('.react-tooltip-content-wrapper, [class*="react-tooltip" i]')) {
+                                node.setAttribute('data-ag-tooltip-ready', 'true');
+                            }
+                            const subTooltips = node.querySelectorAll('.react-tooltip-content-wrapper, [class*="react-tooltip" i]');
+                            for (const t of subTooltips) {
+                                t.setAttribute('data-ag-tooltip-ready', 'true');
+                            }
+                        }
+                    };
+                    checkAndSetReady();
+                }
+            } catch (e) {}
+        }
+    }
+
+    function translateTooltipPortals() {
+        try {
+            const portals = document.querySelectorAll(tooltipPortalSelectors.join(', '));
+            for (const portal of portals) {
+                if (!isInBlockedZone(portal)) {
+                    if (portal.matches('.react-tooltip-content-wrapper, [class*="react-tooltip" i]')) {
+                        translateTooltipNodeWithReadyCheck(portal);
+                    } else {
+                        translateNode(portal);
+                        translateAttributes(portal);
+                        sweepAttributes(portal);
                     }
                 }
+            }
+        } catch (e) {}
+    }
 
+    function translateAroundPointer(e) {
+        try {
+            let el = e.target;
+            while (el && el !== document.body) {
+                translateAttributes(el);
+                el = el.parentElement;
+            }
+
+            if (e.clientX !== undefined && e.clientY !== undefined) {
+                const elsUnderPointer = document.elementsFromPoint(e.clientX, e.clientY);
+                for (const elem of elsUnderPointer) {
+                    translateAttributes(elem);
+                }
+            }
+
+            requestAnimationFrame(() => {
+                sweepAttributes(document.body);
+                translateTooltipPortals();
+            });
+            setTimeout(() => { sweepAttributes(document.body); translateTooltipPortals(); }, 0);
+            setTimeout(() => { sweepAttributes(document.body); translateTooltipPortals(); }, 30);
+            setTimeout(() => { sweepAttributes(document.body); translateTooltipPortals(); }, 80);
+            setTimeout(() => { sweepAttributes(document.body); translateTooltipPortals(); }, 150);
+            setTimeout(() => { sweepAttributes(document.body); translateTooltipPortals(); }, 300);
+        } catch (err) {}
+    }
+
+    function translateNode(node) {
+        try {
+            if (!node) return;
+            if (done.has(node)) {
+                if (node.nodeType !== Node.TEXT_NODE || translateString(node.nodeValue) === node.nodeValue) return;
+                done.delete(node);
+            }
+
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                translateAttributes(node);
+                if (translateSplitTextElement(node)) return;
                 if (node.shadowRoot) translateNode(node.shadowRoot);
                 for (const child of node.childNodes) translateNode(child);
-
                 return;
             }
 
@@ -184,22 +400,9 @@ function generateJs() {
                 const originalVal = node.nodeValue;
                 if (!originalVal || originalVal.trim().length < 1) return;
                 if (isInBlockedZone(node)) return;
+                if (translateSplitTextElement(node.parentElement)) return;
 
-                let newVal = originalVal;
-                const valNorm = norm(originalVal);
-                const valLower = valNorm.toLowerCase();
-
-                if (map.has(valNorm)) {
-                    newVal = map.get(valNorm);
-                } else if (lowerMap.has(valLower)) {
-                    newVal = lowerMap.get(valLower);
-                } else {
-                    for (const [key, translated] of longEntries) {
-                        if (key.length > 20 && valNorm.includes(key)) {
-                            newVal = newVal.split(key).join(translated);
-                        }
-                    }
-                }
+                let newVal = translateString(originalVal);
 
                 if (newVal !== originalVal) {
                     node.nodeValue = newVal;
@@ -210,17 +413,65 @@ function generateJs() {
         } catch (e) {}
     }
 
+    let portalDebounce = null;
     const observer = new MutationObserver(mutations => {
+        let hasChildList = false;
         for (const m of mutations) {
             if (m.type === 'childList') {
-                for (const n of m.addedNodes) translateNode(n);
+                hasChildList = true;
+                for (const n of m.addedNodes) {
+                    translateNode(n);
+                    if (n.nodeType === Node.ELEMENT_NODE) {
+                        try {
+                            if (n.matches && n.matches('.react-tooltip-content-wrapper, [class*="react-tooltip" i]')) {
+                                n.removeAttribute('data-ag-tooltip-ready');
+                                translateTooltipNodeWithReadyCheck(n);
+                            } else if (n.querySelector && n.querySelector('.react-tooltip-content-wrapper, [class*="react-tooltip" i]')) {
+                                const tooltips = n.querySelectorAll('.react-tooltip-content-wrapper, [class*="react-tooltip" i]');
+                                for (const t of tooltips) {
+                                    t.removeAttribute('data-ag-tooltip-ready');
+                                    translateTooltipNodeWithReadyCheck(t);
+                                }
+                            }
+
+                            if (n.matches && n.matches(tooltipPortalSelectors.join(', '))) {
+                                translateNode(n);
+                                sweepAttributes(n);
+                            } else if (n.querySelector && n.querySelector(tooltipPortalSelectors.join(', '))) {
+                                translateTooltipPortals();
+                            }
+                        } catch(e) {}
+                    }
+                }
             } else if (m.type === 'characterData') {
                 translateNode(m.target);
+            } else if (m.type === 'attributes') {
+                const el = m.target;
+                if (el && el.nodeType === Node.ELEMENT_NODE && !isInBlockedZone(el)) {
+                    const attr = m.attributeName;
+                    if (attr === 'title' || attr === 'aria-label' || attr === 'placeholder') {
+                        const v = el.getAttribute(attr);
+                        if (v) {
+                            const translated = translateString(v);
+                            if (translated !== v) {
+                                el.setAttribute(attr, translated);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (hasChildList) {
+            if (!portalDebounce) {
+                portalDebounce = setTimeout(() => {
+                    translateTooltipPortals();
+                    portalDebounce = null;
+                }, 50);
             }
         }
     });
 
-    const obsOpts = { childList: true, subtree: true, characterData: true };
+    const obsOpts = { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['title', 'aria-label', 'placeholder'] };
 
     const startEngine = () => {
         const target = document.body || document.documentElement;
@@ -229,6 +480,7 @@ function generateJs() {
         try {
             observer.observe(target, obsOpts);
             translateNode(target);
+            sweepAttributes(target);
         } catch (e) {}
     };
 
@@ -237,6 +489,17 @@ function generateJs() {
         const sr = origAttachShadow.apply(this, arguments);
         try { observer.observe(sr, obsOpts); } catch (e) {}
         return sr;
+    };
+
+    const origSetAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function(name, value) {
+        if (typeof value === 'string' && (name === 'title' || name === 'aria-label' || name === 'placeholder')) {
+            if (!isInBlockedZone(this) && !BLOCKED_TAGS.includes(this.tagName.toUpperCase())) {
+                const translated = translateString(value);
+                return origSetAttribute.call(this, name, translated);
+            }
+        }
+        return origSetAttribute.call(this, name, value);
     };
 
     if (document.readyState === 'loading') {
@@ -251,6 +514,10 @@ function generateJs() {
     setTimeout(startEngine, 1000);
     setTimeout(startEngine, 3000);
     setTimeout(startEngine, 6000);
+
+    document.addEventListener('pointerover', translateAroundPointer, true);
+    document.addEventListener('mouseover', translateAroundPointer, true);
+    document.addEventListener('focusin', translateAroundPointer, true);
 })();
 ${SIGNATURE_END}`;
 
@@ -260,17 +527,8 @@ ${SIGNATURE_END}`;
 }
 
 function cleanJsContent(content) {
-    // 清理當前 JA-JP 標記
     const regexJaJp = new RegExp(escapeRegExp(SIGNATURE_START) + '[\\s\\S]*?' + escapeRegExp(SIGNATURE_END), 'g');
-    let cleaned = content.replace(regexJaJp, '');
-
-    // 同時清理舊版繁中 ZH-HANT-TW 標記（支援覆蓋安裝）
-    const zhStart = '/* --- ANTIGRAVITY ZH-HANT-TW LOCALIZATION START --- */';
-    const zhEnd = '/* --- ANTIGRAVITY ZH-HANT-TW LOCALIZATION END --- */';
-    const regexZhHant = new RegExp(escapeRegExp(zhStart) + '[\\s\\S]*?' + escapeRegExp(zhEnd), 'g');
-    cleaned = cleaned.replace(regexZhHant, '');
-
-    return cleaned;
+    return content.replace(regexJaJp, '');
 }
 
 function cleanMenuJsContent(content) {
@@ -413,7 +671,22 @@ function createMenuTranslationPatch() {
         'Reset Zoom': 'ズームをリセット',
         'Zoom In': '拡大',
         'Zoom Out': '縮小',
-        'Toggle Full Screen': 'フルスクリーンを切り替え'
+        'Toggle Full Screen': 'フルスクリーンを切り替え',
+        'Bring All to Front': 'すべてを前面に表示',
+        'Reload': '再読み込み',
+        'Force Reload': '強制再読み込み',
+        'Actual Size': '実際のサイズ',
+        'Paste and Match Style': 'スタイルを合わせてペースト',
+        'Delete': '削除',
+        'Substitutions': '置換',
+        'Show Substitutions': '置換を表示',
+        'Smart Quotes': 'スマート引用符',
+        'Smart Dashes': 'スマートダッシュ',
+        'Text Replacement': 'テキスト置換',
+        'Speech': 'スピーチ',
+        'Start Speaking': '読み上げを開始',
+        'Stop Speaking': '読み上げを停止',
+        'Close Window': 'ウィンドウを閉じる'
     };
 
     function translateMenu(items) {
@@ -471,7 +744,6 @@ function install20(resourcesDir) {
         return false;
     }
 
-    // 環境檢查：在執行任何破壞性操作前，先確認 asar CLI 可用
     if (!checkEnvironment()) {
         return false;
     }

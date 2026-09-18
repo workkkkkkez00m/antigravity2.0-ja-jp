@@ -24,5 +24,16 @@
     "No subagents": "サブエージェントがありません",
     "No active skills": "アクティブなスキルがありません",
     "Agent Auto-Fix Lints": "エージェントによる Lint エラーの自動修正",
-    "When enabled, agent is given awareness of lint errors created by its edits and may fix them without explicit user prompting.": "有効にすると、エージェントは自身の編集によって生じた Lint エラーを認識し、ユーザーの明示的な指示なしに修正を試みる場合があります。"
+    "When enabled, agent is given awareness of lint errors created by its edits and may fix them without explicit user prompting.": "有効にすると、エージェントは自身の編集によって生じた Lint エラーを認識し、ユーザーの明示的な指示なしに修正を試みる場合があります。",
+    "agy-customizations": "AGY カスタマイズシステム",
+    "Comprehensive guide and reference for the Antigravity Customization System. Use to explain how customizations work, their loading priority, discovery mechanisms, and to guide the creation of skills, rules, plugins, hooks, and MCP servers.": "Antigravity カスタマイズシステムの包括的なガイドとリファレンスです。カスタマイズの仕組み、読み込み優先順位、検出メカニズムを説明し、スキル、ルール、プラグイン、フック、MCP サーバーの作成を案内する際に使用します。",
+    "antigravity-guide": "Antigravity ガイド",
+    "Provides a comprehensive guide, quick reference, and sitemap for Google Antigravity (AGY), including the Antigravity CLI (agy), Antigravity 2.0, Antigravity IDE, Python SDK, slash commands, keybindings, and customizations (skills, rules, MCP, sidecars). Activate this skill when the user asks questions about how to use, configure, or customize Antigravity, AGY, the agy CLI, the Antigravity IDE, or Antigravity 2.0.": "Google Antigravity (AGY) の包括的なガイド、クイックリファレンス、サイトマップを提供します。Antigravity CLI (agy)、Antigravity 2.0、Antigravity IDE、Python SDK、スラッシュコマンド、キーバインド、カスタマイズ（スキル、ルール、MCP、サイドカー）を網羅します。Antigravity、AGY、agy CLI、Antigravity IDE、Antigravity 2.0 の使い方、設定、カスタマイズについて質問された場合に、このスキルを有効にしてください。",
+    "generative_ui": "生成 UI",
+    "How to render rich interactive HTML widgets inline in the chat or as standalone artifacts. Use this skill when you want to show the user diagrams, data visualizations, interactive controls, educational walkthroughs, or any rich visual content beyond plain text and markdown.": "リッチでインタラクティブな HTML ウィジェットを会話内または独立したアーティファクトとして表示する方法です。図、データ可視化、インタラクティブなコントロール、学習用の手順、またはプレーンテキストや Markdown を超えるリッチな視覚コンテンツをユーザーに示す場合に、このスキルを使用します。",
+    "migrate-workflows": "ワークフローを移行",
+    "Automatically migrate legacy workflows (.agents/workflows/ or ~/.gemini/config/workflows/) to skills (.agents/skills/ or ~/.gemini/config/skills/). Scans for existing workflows, creates target SKILL.md files, and archives old workflow files.": "レガシーなワークフロー（.agents/workflows/ または ~/.gemini/config/workflows/）をスキル（.agents/skills/ または ~/.gemini/config/skills/）へ自動的に移行します。既存のワークフローをスキャンし、移行先の SKILL.md ファイルを作成して、古いワークフローファイルをアーカイブします。",
+    "Automatically migrate legacy workflows to modern skills across global and workspace configurations. Scans for existing workflows, creates target SKILL.md files, and safely archives old workflow files.": "グローバルおよび Workspace の設定全体で、レガシーなワークフローをモダンなスキルへ自動的に移行します。既存のワークフローをスキャンし、移行先の SKILL.md ファイルを作成して、古いワークフローファイルを安全にアーカイブします。",
+    "permissioned-github": "権限付き GitHub",
+    "Guidelines for interacting with GitHub and request permissions from the user when commands fail due to restrictions in the agent environment.": "GitHub と連携するためのガイドラインと、Agent 環境の制限によってコマンドが失敗したときにユーザーへ権限を要求する方法を示します。"
 }
